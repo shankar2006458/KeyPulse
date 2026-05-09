@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>KeyPulse — Real-Time Keyboard Tester & RGB Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+   KeyPulse — Theme variables
+   ============================================================ */
+:root{
+  --bg-0:#05060f;
+  --bg-1:#0a0c1f;
+  --bg-2:#10142b;
+  --fg:#e6f1ff;
+  --muted:#7e8bb8;
+  --glass:rgba(20,24,55,.45);
+  --glass-brd:rgba(140,170,255,.18);
+  --neon-1:#00f0ff;   /* cyan */
+  --neon-2:#ff2bd6;   /* pink */
+  --neon-3:#9d4dff;   /* purple */
+  --neon-4:#37ff8b;   /* green */
+  --accent:var(--neon-1);
+  --accent-2:var(--neon-2);
+  --grid-col:rgba(0,240,255,.08);
+  --shadow-neon:0 0 12px var(--accent), 0 0 30px color-mix(in oklab, var(--accent) 50%, transparent);
+}
+[data-theme="matrix"]{
+  --bg-0:#000700; --bg-1:#03110a; --bg-2:#062414;
+  --fg:#c4ffd5; --muted:#5da680;
+  --neon-1:#00ff66; --neon-2:#39ff14; --neon-3:#0fff8e; --neon-4:#aaffc4;
+  --accent:#00ff66; --accent-2:#39ff14;
+  --grid-col:rgba(0,255,102,.1);
+}
+[data-theme="ice"]{
+  --bg-0:#03081a; --bg-1:#061436; --bg-2:#0a2255;
+  --fg:#e6f4ff; --muted:#7aaadf;
+  --neon-1:#5ad6ff; --neon-2:#7ea8ff; --neon-3:#b7e0ff; --neon-4:#9be8ff;
+  --accent:#5ad6ff; --accent-2:#7ea8ff;
+  --grid-col:rgba(120,200,255,.1);
+}
+[data-theme="white"]{
+  --bg-0:#f4f6fb; --bg-1:#ffffff; --bg-2:#eef1f8;
+  --fg:#0e1530; --muted:#5b6788;
+  --glass:rgba(255,255,255,.7); --glass-brd:rgba(20,30,80,.12);
+  --neon-1:#5b6cff; --neon-2:#ff4f8a; --neon-3:#8a5bff; --neon-4:#22b97a;
+  --accent:#5b6cff; --accent-2:#ff4f8a;
+  --grid-col:rgba(20,30,80,.06);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--bg-0);color:var(--fg);
+  font-family:"Rajdhani",system-ui,sans-serif;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased}
+body{
+  background:
+    radial-gradient(1200px 800px at 80% -10%, color-mix(in oklab, var(--neon-3) 25%, transparent), transparent 60%),
+    radial-gradient(900px 700px at -10% 30%, color-mix(in oklab, var(--neon-1) 22%, transparent), transparent 60%),
+    radial-gradient(700px 600px at 50% 110%, color-mix(in oklab, var(--neon-2) 22%, transparent), transparent 60%),
+    linear-gradient(180deg,var(--bg-0),var(--bg-1));
+  background-attachment: fixed;
+}
+h1,h2,h3,.display{font-family:"Orbitron",sans-serif;letter-spacing:.04em}
+.mono{font-family:"JetBrains Mono",monospace}
+
+/* Animated grid + particles canvas */
+#bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(var(--grid-col) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-col) 1px, transparent 1px);
+  background-size:48px 48px,48px 48px;
+  mask-image:radial-gradient(ellipse at center, #000 40%, transparent 85%);
+  animation: gridShift 22s linear infinite;
+}
+@keyframes gridShift{to{background-position:480px 480px,480px 480px}}
+#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
+.blob{position:fixed;border-radius:50%;filter:blur(45px);opacity:.45;z-index:0;pointer-events:none;mix-blend-mode:screen}
+.blob.b1{width:520px;height:520px;background:var(--neon-1);top:-120px;left:-120px;animation:floaty 14s ease-in-out infinite}
+.blob.b2{width:480px;height:480px;background:var(--neon-2);bottom:-150px;right:-100px;animation:floaty 18s ease-in-out infinite reverse}
+.blob.b3{width:380px;height:380px;background:var(--neon-3);top:40%;left:40%;animation:floaty 20s ease-in-out infinite}
+@keyframes floaty{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(60px,-40px) scale(1.08)}}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.app{position:relative;z-index:2;min-height:100vh;display:flex;flex-direction:column}
+.nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 22px;backdrop-filter: blur(14px);
+  background:linear-gradient(180deg, color-mix(in oklab, var(--bg-1) 70%, transparent), transparent);
+  border-bottom:1px solid var(--glass-brd);
+  position:sticky;top:0;z-index:10;
+}
+.logo{display:flex;align-items:center;gap:10px;font-family:"Orbitron";font-weight:900;letter-spacing:.18em}
+.logo-mark{width:34px;height:34px;border-radius:9px;
+  background:conic-gradient(from 0deg,var(--neon-1),var(--neon-2),var(--neon-3),var(--neon-4),var(--neon-1));
+  box-shadow:0 0 20px color-mix(in oklab, var(--accent) 60%, transparent);
+  animation:spin 6s linear infinite;position:relative}
+.logo-mark::after{content:"";position:absolute;inset:5px;border-radius:6px;background:var(--bg-0)}
+.logo span b{color:var(--accent);text-shadow:0 0 12px var(--accent)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.nav-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{
+  appearance:none;border:1px solid var(--glass-brd);background:var(--glass);
+  color:var(--fg);padding:8px 14px;border-radius:10px;cursor:pointer;
+  font-family:"Rajdhani";font-weight:600;letter-spacing:.06em;
+  display:inline-flex;align-items:center;gap:8px;
+  backdrop-filter:blur(10px);transition:all .25s ease;
+}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-neon);border-color:var(--accent)}
+.btn.active{border-color:var(--accent);box-shadow:var(--shadow-neon);color:var(--accent)}
+.btn .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+select.btn{padding-right:24px}
+
+/* Main grid */
+main{
+  flex:1;display:grid;grid-template-columns: 1fr 320px;gap:20px;
+  padding:22px;max-width:1500px;margin:0 auto;width:100%;
+}
+@media (max-width: 980px){
+  main{grid-template-columns:1fr}
+}
+
+.hero{
+  text-align:center;margin:6px 0 18px;
+}
+.hero h1{
+  font-size:clamp(36px,6vw,72px);margin:0;
+  background:linear-gradient(90deg,var(--neon-1),var(--neon-2),var(--neon-3));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 18px color-mix(in oklab, var(--accent) 40%, transparent));
+  animation:hueShift 8s linear infinite;
+}
+@keyframes hueShift{to{filter:drop-shadow(0 0 18px color-mix(in oklab, var(--accent-2) 40%, transparent)) hue-rotate(360deg)}}
+.hero p{color:var(--muted);margin:6px 0 0;font-size:clamp(13px,1.6vw,18px);letter-spacing:.18em;text-transform:uppercase}
+
+/* Glass panels */
+.panel{
+  background:var(--glass);border:1px solid var(--glass-brd);border-radius:18px;
+  backdrop-filter:blur(16px);box-shadow:0 30px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.03);
+  padding:18px;
+}
+
+/* ============================================================
+   Keyboard
+   ============================================================ */
+.keyboard-wrap{display:flex;flex-direction:column;gap:14px}
+.keyboard{
+  --gap:6px;
+  display:flex;flex-direction:column;gap:var(--gap);
+  padding:18px;border-radius:22px;
+  background:linear-gradient(180deg, color-mix(in oklab, var(--bg-2) 80%, transparent), color-mix(in oklab, var(--bg-1) 90%, transparent));
+  border:1px solid var(--glass-brd);
+  position:relative;overflow:hidden;
+}
+.keyboard::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(circle at var(--mx,50%) var(--my,50%), color-mix(in oklab, var(--accent) 18%, transparent), transparent 40%);
+  transition:background .2s;
+}
+.row{display:flex;gap:var(--gap);justify-content:center}
+.key{
+  --u:1;
+  flex: var(--u) 0 auto;
+  min-width: calc(var(--u) * var(--key-size, 46px));
+  height: var(--key-size, 46px);
+  border-radius:10px;
+  background:linear-gradient(180deg, #1a2046, #0d1230);
+  border:1px solid rgba(140,170,255,.18);
+  color:var(--fg);font-family:"Rajdhani";font-weight:600;font-size:13px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;cursor:pointer;user-select:none;
+  transition: transform .08s ease, box-shadow .25s ease, background .25s ease, color .25s ease;
+  overflow:hidden;
+  --kc: var(--neon-1);
+}
+[data-theme="white"] .key{background:linear-gradient(180deg,#fff,#e9edf7)}
+.key small{position:absolute;top:4px;left:6px;font-size:10px;opacity:.6}
+.key .lbl{position:relative;z-index:2}
+.key::after{ /* glow ring */
+  content:"";position:absolute;inset:-2px;border-radius:12px;pointer-events:none;
+  box-shadow:0 0 0 0 var(--kc);opacity:0;transition:opacity .3s;
+}
+.key.heat{
+  box-shadow: 0 0 calc(6px + var(--heat,0) * 18px) color-mix(in oklab, var(--kc) calc(40% + var(--heat,0)*60%), transparent);
+}
+.key.pressed{
+  transform:translateY(2px) scale(.97);
+  background:linear-gradient(180deg, color-mix(in oklab, var(--kc) 70%, #000), color-mix(in oklab, var(--kc) 40%, #000));
+  color:#fff;
+  box-shadow: 0 0 22px var(--kc), 0 0 60px color-mix(in oklab, var(--kc) 60%, transparent), inset 0 0 18px color-mix(in oklab, var(--kc) 40%, transparent);
+}
+.key.pressed::after{opacity:1;animation:ringPulse .55s ease-out}
+@keyframes ringPulse{
+  0%{box-shadow:0 0 0 0 var(--kc);opacity:.9}
+  100%{box-shadow:0 0 0 18px transparent;opacity:0}
+}
+.ripple{position:absolute;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle, color-mix(in oklab,var(--kc) 90%,transparent), transparent 70%);
+  transform:translate(-50%,-50%) scale(0);animation:ripple .6s ease-out forwards;mix-blend-mode:screen}
+@keyframes ripple{to{transform:translate(-50%,-50%) scale(8);opacity:0}}
+
+/* category colors */
+.key.cat-fn{ --kc: var(--neon-3) }
+.key.cat-wasd{ --kc: var(--neon-4) }
+.key.cat-space{ --kc: var(--neon-1) }
+.key.cat-enter{ --kc: var(--neon-2) }
+.key.cat-mod{ --kc: #ffb84d }
+.key.cat-arrow{ --kc: #4dffe0 }
+.key.cat-num{ --kc: #ff7ad9 }
+
+/* ============================================================
+   Side stats
+   ============================================================ */
+.side{display:flex;flex-direction:column;gap:16px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{
+  padding:12px;border-radius:14px;background:color-mix(in oklab, var(--bg-2) 70%, transparent);
+  border:1px solid var(--glass-brd);
+}
+.stat .l{font-size:11px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+.stat .v{font-family:"Orbitron";font-weight:900;font-size:22px;color:var(--accent);text-shadow:0 0 12px color-mix(in oklab, var(--accent) 60%, transparent);margin-top:4px}
+.stat.full{grid-column:1/-1;text-align:center}
+.stat.full .v{font-size:34px}
+
+.lock-row{display:flex;gap:10px}
+.lock{
+  flex:1;padding:10px;border-radius:12px;border:1px solid var(--glass-brd);
+  background:color-mix(in oklab, var(--bg-2) 60%, transparent);
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:"Rajdhani";font-weight:600;letter-spacing:.1em;text-transform:uppercase;font-size:12px;
+}
+.lock .led{width:10px;height:10px;border-radius:50%;background:#333;box-shadow:inset 0 0 4px #000}
+.lock.on{color:var(--accent);border-color:var(--accent)}
+.lock.on .led{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+
+.history{display:flex;flex-wrap:wrap;gap:6px;min-height:60px}
+.history .chip{
+  padding:6px 10px;border-radius:8px;background:color-mix(in oklab, var(--accent) 18%, transparent);
+  border:1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  color:var(--fg);font-family:"JetBrains Mono";font-size:12px;
+  animation: chipIn .3s ease;
+}
+@keyframes chipIn{from{opacity:0;transform:translateY(6px) scale(.9)}to{opacity:1;transform:none}}
+
+.section-title{
+  display:flex;align-items:center;gap:10px;
+  font-family:"Orbitron";letter-spacing:.18em;font-size:12px;color:var(--muted);
+  text-transform:uppercase;margin:0 0 10px;
+}
+.section-title::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+/* RGB modes background tint of keyboard */
+.keyboard.mode-rainbow{background:linear-gradient(120deg, rgba(255,0,128,.08), rgba(0,255,200,.08), rgba(120,80,255,.08))}
+.keyboard.mode-wave .key{animation:waveCol 4s linear infinite}
+@keyframes waveCol{
+  0%{box-shadow:0 0 6px var(--neon-1)}
+  25%{box-shadow:0 0 12px var(--neon-2)}
+  50%{box-shadow:0 0 12px var(--neon-3)}
+  75%{box-shadow:0 0 12px var(--neon-4)}
+  100%{box-shadow:0 0 6px var(--neon-1)}
+}
+.keyboard.mode-breathing .key{animation:breath 3s ease-in-out infinite}
+@keyframes breath{0%,100%{filter:brightness(.9)}50%{filter:brightness(1.4) drop-shadow(0 0 6px var(--accent))}}
+
+footer{
+  text-align:center;padding:14px;color:var(--muted);font-size:12px;letter-spacing:.18em;text-transform:uppercase
+}
+
+/* hide labels visually small */
+@media (max-width:600px){
+  .keyboard{padding:10px;--gap:4px}
+  .key{font-size:11px}
+}
+
+/* Mobile Block Screen */
+#mobile-block{
+  position: fixed;
+  inset: 0;
+  background: #050816;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+  padding: 20px;
+}
+
+.mobile-box{
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 35px 25px;
+  border-radius: 24px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 40px rgba(0,255,255,0.15);
+}
+
+.mobile-box h1{
+  font-size: 32px;
+  margin-bottom: 14px;
+  color: #00ffff;
+  font-family: Orbitron, sans-serif;
+}
+
+.mobile-box p{
+  font-size: 15px;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+
+/* Show only on mobile/tablet */
+@media (max-width: 1024px){
+  #mobile-block{
+    display: flex;
+  }
+
+  .app,
+  #bg-grid,
+  #bg-canvas,
+  .blob{
+    display: none !important;
+  }
+
+  body{
+    overflow: hidden;
+  }
+}
+
+/* Animated Dropdown */
+select.btn{
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  min-width: 150px;
+  padding-right: 46px;
+  position: relative;
+  cursor: pointer;
+
+  transition:
+    border-color .3s ease,
+    box-shadow .3s ease,
+    transform .25s ease;
+
+  background:
+    linear-gradient(45deg, transparent 50%, var(--accent) 50%) no-repeat,
+    linear-gradient(135deg, var(--accent) 50%, transparent 50%) no-repeat,
+    var(--glass);
+
+  background-size: 7px 7px, 7px 7px, 100%;
+  background-position:
+    calc(100% - 20px) calc(50% - 2px),
+    calc(100% - 14px) calc(50% - 2px),
+    0 0;
+}
+
+/* Hover Animation */
+select.btn:hover{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-neon);
+  border-color: var(--accent);
+
+}
+
+/* Click Effect */
+select.btn:focus{
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 12px var(--accent),
+    0 0 28px color-mix(in oklab, var(--accent) 40%, transparent);
+
+  animation: dropdownPulse .5s ease;
+}
+
+
+@keyframes dropdownPulse{
+  0%{
+    transform: scale(1);
+  }
+
+  50%{
+    transform: scale(1.03);
+  }
+
+  100%{
+    transform: scale(1);
+  }
+}
+
+/* Dropdown Options */
+select.btn option{
+  background: #0d1230;
+  color: white;
+}
+</style>
+</head>
+<body data-theme="cyber">
+
+  <!-- Desktop Only Message -->
+  <div id="mobile-block">
+    <div class="mobile-box">
+      <h1>Desktop Only</h1>
+      <p>
+        KeyPulse is designed for desktop keyboards and full-size screens.
+        Please open this website on a PC or laptop.
+      </p>
+    </div>
+  </div>
+
+<!-- Animated background layers -->
+<div id="bg-grid"></div>
+<canvas id="bg-canvas"></canvas>
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+<div class="blob b3"></div>
+
+<div class="app">
+  <!-- =========== NAV =========== -->
+  <nav class="nav">
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <span>KEY<b>PULSE</b></span>
+    </div>
+    <div class="nav-actions">
+      <select id="theme" class="btn" title="Theme">
+        <option value="cyber">Cyberpunk</option>
+        <option value="matrix">Matrix</option>
+        <option value="ice">Ice Blue</option>
+        <option value="white">Minimal White</option>
+      </select>
+      <select id="rgb-mode" class="btn" title="RGB Mode">
+        <option value="reactive">Reactive</option>
+        <option value="wave">Wave</option>
+        <option value="rainbow">Rainbow</option>
+        <option value="breathing">Breathing</option>
+      </select>
+      <select id="sound-theme" class="btn" title="Sound Theme">
+        <option value="mechanical">Mechanical</option>
+        <option value="blue">Blue Switch</option>
+        <option value="thock">Thocky</option>
+        <option value="retro">Retro Keyboard</option>
+        <option value="typewriter">Typewriter</option>
+        <option value="laser">Laser</option>
+      </select>
+      <button class="btn active" id="sound-toggle">🔊 Sound</button>
+      <button class="btn" id="fs-toggle">⛶ Fullscreen</button>
+    </div>
+  </nav>
+
+  <!-- =========== HERO + LAYOUT =========== -->
+  <main>
+    <section>
+      <div class="hero">
+        <h1>KeyPulse</h1>
+        <p>Real-Time Keyboard Tester &amp; RGB Visualizer</p>
+      </div>
+
+      <div class="panel keyboard-wrap">
+        <div class="section-title">Keyboard</div>
+        <div id="keyboard" class="keyboard mode-reactive"></div>
+        <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:6px">
+          <span>Tap or press any key. Hold for sustained glow.</span>
+          <span class="mono" id="last-code">—</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="panel">
+        <div class="section-title">Live Stats</div>
+        <div class="stat-grid">
+          <div class="stat full">
+            <div class="l">Current Key</div>
+            <div class="v" id="s-current">—</div>
+          </div>
+          <div class="stat"><div class="l">Total Presses</div><div class="v" id="s-total">0</div></div>
+          <div class="stat"><div class="l">Active Keys</div><div class="v" id="s-active">0</div></div>
+          <div class="stat"><div class="l">KPS</div><div class="v" id="s-kps">0</div></div>
+          <div class="stat"><div class="l">CPS Peak</div><div class="v" id="s-peak">0</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-title">Locks</div>
+        <div class="lock-row">
+          <div class="lock" id="caps"><span>Caps</span><span class="led"></span></div>
+          <div class="lock" id="num"><span>Num</span><span class="led"></span></div>
+          <div class="lock" id="scroll"><span>Scroll</span><span class="led"></span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-title">Key History</div>
+        <div class="history" id="history"></div>
+      </div>
+
+    </aside>
+  </main>
+
+  <footer>© KeyPulse — Developed By Shankar Prasad Pyke</footer>
+</div>
+
+<script>
+  /* ============================================================
+   KeyPulse — JS
+   ============================================================ */
+
+/* -------- Keyboard layout definition --------
+   Each key: { l: label, c: code (KeyboardEvent.code), u: width units, cat?: category }
+*/
+const LAYOUT = [
+  [
+    {l:"Esc",c:"Escape",u:1,cat:"mod"},
+    {l:"F1",c:"F1",cat:"fn"},{l:"F2",c:"F2",cat:"fn"},{l:"F3",c:"F3",cat:"fn"},{l:"F4",c:"F4",cat:"fn"},
+    {l:"F5",c:"F5",cat:"fn"},{l:"F6",c:"F6",cat:"fn"},{l:"F7",c:"F7",cat:"fn"},{l:"F8",c:"F8",cat:"fn"},
+    {l:"F9",c:"F9",cat:"fn"},{l:"F10",c:"F10",cat:"fn"},{l:"F11",c:"F11",cat:"fn"},{l:"F12",c:"F12",cat:"fn"},
+    {l:"Prt",c:"PrintScreen",cat:"mod"},{l:"Scr",c:"ScrollLock",cat:"mod"},{l:"Pse",c:"Pause",cat:"mod"}
+  ],
+  [
+    {l:"`",c:"Backquote"},
+    ...["1","2","3","4","5","6","7","8","9","0"].map(d=>({l:d,c:"Digit"+d,cat:"num"})),
+    {l:"-",c:"Minus"},{l:"=",c:"Equal"},
+    {l:"⌫ Backspace",c:"Backspace",u:2,cat:"mod"}
+  ],
+  [
+    {l:"Tab",c:"Tab",u:1.5,cat:"mod"},
+    ...["Q","W","E","R","T","Y","U","I","O","P"].map(L=>({l:L,c:"Key"+L, cat: (L==="W"?"wasd":undefined)})),
+    {l:"[",c:"BracketLeft"},{l:"]",c:"BracketRight"},{l:"\\",c:"Backslash",u:1.5}
+  ],
+  [
+    {l:"Caps",c:"CapsLock",u:1.75,cat:"mod"},
+    ...["A","S","D","F","G","H","J","K","L"].map(L=>({l:L,c:"Key"+L, cat:(["A","S","D"].includes(L)?"wasd":undefined)})),
+    {l:";",c:"Semicolon"},{l:"'",c:"Quote"},
+    {l:"Enter ⏎",c:"Enter",u:2.25,cat:"enter"}
+  ],
+  [
+    {l:"Shift",c:"ShiftLeft",u:2.25,cat:"mod"},
+    ...["Z","X","C","V","B","N","M"].map(L=>({l:L,c:"Key"+L})),
+    {l:",",c:"Comma"},{l:".",c:"Period"},{l:"/",c:"Slash"},
+    {l:"Shift",c:"ShiftRight",u:2.75,cat:"mod"}
+  ],
+  [
+    {l:"Ctrl",c:"ControlLeft",u:1.25,cat:"mod"},
+    {l:"Win",c:"MetaLeft",u:1.25,cat:"mod"},
+    {l:"Alt",c:"AltLeft",u:1.25,cat:"mod"},
+    {l:"Space",c:"Space",u:6.25,cat:"space"},
+    {l:"Alt",c:"AltRight",u:1.25,cat:"mod"},
+    {l:"Fn",c:"Fn",u:1.25,cat:"mod"},
+    {l:"Menu",c:"ContextMenu",u:1.25,cat:"mod"},
+    {l:"Ctrl",c:"ControlRight",u:1.25,cat:"mod"},
+    {l:"◀",c:"ArrowLeft",cat:"arrow"},
+    {l:"▼",c:"ArrowDown",cat:"arrow"},
+    {l:"▲",c:"ArrowUp",cat:"arrow"},
+    {l:"▶",c:"ArrowRight",cat:"arrow"},
+  ],
+];
+
+const kbEl = document.getElementById("keyboard");
+const keyMap = new Map(); // code -> element
+const heat = new Map();   // code -> count
+
+function renderKeyboard(){
+  kbEl.innerHTML = "";
+  for(const row of LAYOUT){
+    const r = document.createElement("div");
+    r.className = "row";
+    for(const k of row){
+      const el = document.createElement("div");
+      el.className = "key heat" + (k.cat?` cat-${k.cat}`:"");
+      el.style.setProperty("--u", k.u || 1);
+      el.dataset.code = k.c;
+      el.innerHTML = `<span class="lbl">${k.l}</span>`;
+      el.addEventListener("pointerdown", e=>{
+        pressKey(k.c, {x:e.offsetX, y:e.offsetY});
+        setTimeout(()=>releaseKey(k.c), 140);
+      });
+      r.appendChild(el);
+      keyMap.set(k.c, el);
+    }
+    kbEl.appendChild(r);
+  }
+}
+renderKeyboard();
+
+/* -------- Stats state -------- */
+const state = {
+  total: 0,
+  active: new Set(),
+  history: [],
+  presses: [], // timestamps for KPS
+  peak: 0,
+  caps:false, num:false, scroll:false,
+  sound:true, rgb:true,
+};
+const $ = id => document.getElementById(id);
+
+function updateStats(code){
+  $("s-total").textContent = state.total;
+  $("s-active").textContent = state.active.size;
+  if(code){ $("s-current").textContent = prettyKey(code); $("last-code").textContent = code; }
+}
+function prettyKey(code){
+  if(code.startsWith("Key")) return code.slice(3);
+  if(code.startsWith("Digit")) return code.slice(5);
+  if(code.startsWith("Arrow")) return code.replace("Arrow","↑↓←→ "[0]) || code;
+  return code;
+}
+
+/* -------- Press / release -------- */
+function pressKey(code, origin){
+  const el = keyMap.get(code);
+  if(!el) return;
+  if(!state.active.has(code)){
+    state.active.add(code);
+    state.total++;
+    state.presses.push(performance.now());
+    state.history.unshift(code);
+    if(state.history.length > 22) state.history.pop();
+    renderHistory();
+    // heatmap
+    const h = (heat.get(code)||0)+1;
+    heat.set(code,h);
+    const max = Math.max(...heat.values());
+    heat.forEach((v,c)=>{
+      const e = keyMap.get(c); if(e) e.style.setProperty("--heat", (v/max).toFixed(2));
+    });
+  }
+  el.classList.add("pressed");
+  // ripple
+  const r = document.createElement("span");
+  r.className = "ripple";
+  const rect = el.getBoundingClientRect();
+  const ox = origin?.x ?? rect.width/2;
+  const oy = origin?.y ?? rect.height/2;
+  r.style.left = ox+"px"; r.style.top = oy+"px";
+  r.style.width = r.style.height = "30px";
+  el.appendChild(r);
+  setTimeout(()=>r.remove(), 650);
+  if(state.sound) playClick();
+  updateStats(code);
+}
+function releaseKey(code){
+  state.active.delete(code);
+  const el = keyMap.get(code);
+  if(el) el.classList.remove("pressed");
+  updateStats();
+}
+
+function renderHistory(){
+  const h = $("history");
+  h.innerHTML = state.history.map(c=>`<span class="chip">${prettyKey(c)}</span>`).join("");
+}
+
+/* -------- Global key listeners -------- */
+window.addEventListener("keydown", e=>{
+  if(["Tab","F5","F11"].includes(e.key) && !e.ctrlKey){ /* allow */ }
+  if(e.code === "F11"){ e.preventDefault(); toggleFullscreen(); }
+  pressKey(e.code);
+  updateLocks(e);
+  // prevent space scroll while focused
+  if(e.code==="Space") e.preventDefault();
+});
+window.addEventListener("keyup", e=>{
+  releaseKey(e.code);
+  updateLocks(e);
+});
+window.addEventListener("blur", ()=>{
+  state.active.forEach(c=> releaseKey(c));
+});
+
+function updateLocks(e){
+  try{
+    state.caps = e.getModifierState("CapsLock");
+    state.num = e.getModifierState("NumLock");
+    state.scroll = e.getModifierState("ScrollLock");
+  }catch{}
+  $("caps").classList.toggle("on", state.caps);
+  $("num").classList.toggle("on", state.num);
+  $("scroll").classList.toggle("on", state.scroll);
+}
+
+/* -------- KPS using rAF -------- */
+function tick(){
+  const now = performance.now();
+  state.presses = state.presses.filter(t=> now - t < 1000);
+  const kps = state.presses.length;
+  if(kps > state.peak) state.peak = kps;
+  $("s-kps").textContent = kps;
+  $("s-peak").textContent = state.peak;
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* -------- Theme + RGB mode -------- */
+$("theme").addEventListener("change", e=> document.body.dataset.theme = e.target.value);
+const rgbModeSel = $("rgb-mode");
+rgbModeSel.addEventListener("change", applyMode);
+function applyMode(){
+  const m = rgbModeSel.value;
+
+  kbEl.classList.remove(
+    "mode-reactive",
+    "mode-wave",
+    "mode-rainbow",
+    "mode-breathing"
+  );
+
+  kbEl.classList.add("mode-" + m);
+}
+
+
+/* -------- Sound (WebAudio mechanical click) -------- */
+let audioCtx;
+/* Unlock sound instantly on first interaction */
+function initAudio(){
+  if(audioCtx) return;
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  if(audioCtx.state === "suspended"){
+    audioCtx.resume();
+  }
+
+  // Tiny silent sound to warm up audio
+  const buffer = audioCtx.createBuffer(1, 1, 22050);
+  const source = audioCtx.createBufferSource();
+
+  source.buffer = buffer;
+  source.connect(audioCtx.destination);
+  source.start(0);
+}
+
+window.addEventListener("keydown", initAudio, { once:true });
+window.addEventListener("mousedown", initAudio, { once:true });
+
+/* -------- Advanced Sound Themes -------- */
+
+let currentSoundTheme = "mechanical";
+
+document.getElementById("sound-theme").addEventListener("change", e => {
+  currentSoundTheme = e.target.value;
+});
+
+function playClick(){
+  try{
+    if(!audioCtx) initAudio();
+
+    const t = audioCtx.currentTime;
+
+    switch(currentSoundTheme){
+
+      /* =========================
+         MECHANICAL
+      ========================= */
+      case "mechanical":{
+        const o1 = audioCtx.createOscillator();
+        const o2 = audioCtx.createOscillator();
+
+        const g = audioCtx.createGain();
+
+        o1.type = "square";
+        o2.type = "triangle";
+
+        o1.frequency.setValueAtTime(420 + Math.random()*80, t);
+        o2.frequency.setValueAtTime(180 + Math.random()*40, t);
+
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.38, t + 0.003);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+
+        o1.connect(g);
+        o2.connect(g);
+        g.connect(audioCtx.destination);
+
+        o1.start(t);
+        o2.start(t);
+
+        o1.stop(t + 0.11);
+        o2.stop(t + 0.11);
+        break;
+      }
+
+      /* =========================
+         BLUE SWITCH
+      ========================= */
+      case "blue":{
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+
+        o.type = "triangle";
+
+        o.frequency.setValueAtTime(850 + Math.random()*120, t);
+
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.5, t + 0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+
+        o.connect(g).connect(audioCtx.destination);
+
+        o.start(t);
+        o.stop(t + 0.07);
+        break;
+      }
+
+      /* =========================
+         THOCK
+      ========================= */
+      case "thock":{
+        const bass = audioCtx.createOscillator();
+        const click = audioCtx.createOscillator();
+
+        const g = audioCtx.createGain();
+
+        bass.type = "sine";
+        click.type = "square";
+
+        bass.frequency.setValueAtTime(90 + Math.random()*20, t);
+        click.frequency.setValueAtTime(500, t);
+
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.75, t + 0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+
+        bass.connect(g);
+        click.connect(g);
+        g.connect(audioCtx.destination);
+
+        bass.start(t);
+        click.start(t);
+
+        bass.stop(t + 0.16);
+        click.stop(t + 0.04);
+        break;
+      }
+
+      /* =========================
+         RETRO
+      ========================= */
+      case "retro":{
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+
+        o.type = "square";
+
+        o.frequency.setValueAtTime(220, t);
+
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.32, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+
+        o.connect(g).connect(audioCtx.destination);
+
+        o.start(t);
+        o.stop(t + 0.12);
+        break;
+      }
+
+      /* =========================
+         TYPEWRITER
+      ========================= */
+      case "typewriter":{
+        const bufferSize = audioCtx.sampleRate * 0.05;
+
+        const buffer = audioCtx.createBuffer(
+          1,
+          bufferSize,
+          audioCtx.sampleRate
+        );
+
+        const data = buffer.getChannelData(0);
+
+        for(let i=0;i<bufferSize;i++){
+          data[i] =
+            (Math.random()*2-1) *
+            Math.exp(-i/bufferSize*16);
+        }
+
+        const noise = audioCtx.createBufferSource();
+        const gain = audioCtx.createGain();
+
+        noise.buffer = buffer;
+
+        gain.gain.setValueAtTime(0.55, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+
+        noise.connect(gain).connect(audioCtx.destination);
+
+        noise.start(t);
+        break;
+      }
+
+      /* =========================
+         LASER
+      ========================= */
+      case "laser":{
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+
+        o.type = "sawtooth";
+
+        o.frequency.setValueAtTime(1800, t);
+        o.frequency.exponentialRampToValueAtTime(240, t + 0.09);
+
+        g.gain.setValueAtTime(0.45, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+
+        o.connect(g).connect(audioCtx.destination);
+
+        o.start(t);
+        o.stop(t + 0.09);
+        break;
+      }
+    }
+
+  }catch(err){}
+}
+
+/* -------- Fullscreen -------- */
+function toggleFullscreen(){
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+  else document.exitFullscreen?.();
+}
+$("fs-toggle").addEventListener("click", toggleFullscreen);
+
+
+/* -------- Mouse spotlight on keyboard -------- */
+kbEl.addEventListener("pointermove", e=>{
+  const r = kbEl.getBoundingClientRect();
+  kbEl.style.setProperty("--mx", ((e.clientX-r.left)/r.width*100)+"%");
+  kbEl.style.setProperty("--my", ((e.clientY-r.top)/r.height*100)+"%");
+});
+
+/* -------- Particle background canvas -------- */
+const cvs = document.getElementById("bg-canvas");
+const ctx = cvs.getContext("2d");
+let particles = [];
+function resize(){
+  cvs.width = innerWidth; cvs.height = innerHeight;
+  const n = Math.min(40, Math.floor(innerWidth*innerHeight/50000));
+  particles = Array.from({length:n}, ()=>({
+    x:Math.random()*cvs.width, y:Math.random()*cvs.height,
+    vx:(Math.random()-.5)*.3, vy:(Math.random()-.5)*.3,
+    r:Math.random()*1.6+.4, h:Math.random()*360
+  }));
+}
+addEventListener("resize", resize); resize();
+
+function drawBg(){
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  for(const p of particles){
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<0||p.x>cvs.width) p.vx*=-1;
+    if(p.y<0||p.y>cvs.height) p.vy*=-1;
+    ctx.beginPath();
+    const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#0ff";
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = .35;
+    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fill();
+  }
+  // connecting lines
+  ctx.globalAlpha = .08;
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent").trim()||"#0ff";
+  for(let i=0;i<particles.length;i++){
+    for(let j=i+1;j<particles.length;j++){
+      const a=particles[i],b=particles[j];
+      const dx=a.x-b.x, dy=a.y-b.y, d=dx*dx+dy*dy;
+      if(d<14000){ ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); }
+    }
+  }
+  ctx.globalAlpha = 1;
+  setTimeout(() => {
+    requestAnimationFrame(drawBg);
+  }, 600);
+}
+requestAnimationFrame(drawBg);
+
+applyMode();
+updateStats();
+</script>
+</body>
+</html>
